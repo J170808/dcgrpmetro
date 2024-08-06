@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Police Department Aktenserver</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        h1, h2 {
+            text-align: center;
+        }
+        #loginForm, #aktenForm, #userForm {
+            display: flex;
+            flex-direction: column;
+        }
+        input, textarea, select {
+            margin-bottom: 10px;
+            padding: 5px;
+        }
+        button {
+            padding: 10px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            cursor: pointer;
+            margin-bottom: 10px;
+        }
+        #aktenListe, #userListe {
+            margin-top: 20px;
+        }
+        .hidden {
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div id="loginSection">
+        <h2>Login</h2>
+        <form id="loginForm">
+            <input type="text" id="username" placeholder="Benutzername" required>
+            <input type="password" id="password" placeholder="Passwort" required>
+            <button type="submit">Einloggen</button>
+        </form>
+    </div>
+
+    <div id="mainSection" class="hidden">
+        <h1>Police Department Aktenserver</h1>
+        
+        <select id="aktenTyp">
+            <option value="Haftbefehl">Haftbefehl</option>
+            <option value="Durchsuchungsbefehl">Durchsuchungsbefehl</option>
+            <option value="Straffakte">Straffakte</option>
+            <option value="Arrestakte">Arrestakte</option>
+        </select>
+
+        <form id="aktenForm">
+            <input type="text" id="officerName" placeholder="Name des Officers" required>
+            <input type="text" id="name" placeholder="Name des Verdächtigen" required>
+            <input type="text" id="geburtsdatum" placeholder="Geburtsdatum" required>
+            <input type="text" id="verbrechen" placeholder="Verbrechen" required>
+            <textarea id="beschreibung" placeholder="Beschreibung des Falls" required></textarea>
+            <button type="submit">Akte hinzufügen</button>
+        </form>
+
+        <input type="text" id="suchfeld" placeholder="Nach Namen suchen">
+        <button onclick="sucheAkten()">Suchen</button>
+
+        <div id="aktenListe"></div>
+    </div>
+
+    <div id="adminSection" class="hidden">
+        <h2>Admin-Bereich</h2>
+        <form id="userForm">
+            <input type="text" id="newUsername" placeholder="Neuer Benutzername" required>
+            <input type="password" id="newPassword" placeholder="Neues Passwort" required>
+            <button type="submit">Benutzer erstellen</button>
+        </form>
+        <div id="userListe"></div>
+    </div>
+
+    <script>
+        const API_KEY = '$2a$10$EWsgF6cpkwgLoIyCSiXxM.zCLNeaYF3KFEY8oqheZg/PATYnwApxa'
+        const BIN_ID = '66b2abe1acd3cb34a870e6b3'
+        const API_URL = `https://api.jsonbin.io/v3/b/${BIN_ID}`;
+
+        let akten = JSON.parse(localStorage.getItem('akten')) || [];
+        let users = JSON.parse(localStorage.getItem('users')) || [{ username: 'admin', password: 'admin' }];
+        let currentUser = null;
+
+        function syncData() {
+            // Daten von JSONbin abrufen
+            fetch(API_URL, {
+                headers: {
+                    'X-Master-Key': API_KEY
+                }
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.record) {
+                    akten = data.record.akten || [];
+                    users = data.record.users || [{ username: 'admin', password: 'admin' }];
+                    localStorage.setItem('akten', JSON.stringify(akten));
+                    localStorage.setItem('users', JSON.stringify(users));
+                    updateAktenListe();
+                    updateUserListe();
+                }
+            })
+            .catch(error => console.error('Fehler beim Abrufen der Daten:', error));
+
+            // Daten zu JSONbin senden
+            fetch(API_URL, {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-Master-Key': API_KEY
+                },
+                body: JSON.stringify({ akten, users })
+            })
+            .then(response => response.json())
+            .then(data => console.log('Daten erfolgreich synchronisiert'))
+            .catch(error => console.error('Fehler beim Synchronisieren der Daten:', error));
+        }
+
+        // Alle 30 Sekunden synchronisieren
+        setInterval(syncData, 30000);
+
+        function updateAktenListe() {
+            aktenListe.innerHTML = '<h2>Aktenliste</h2>';
+            akten.forEach((akte, index) => {
+                const akteElement = document.createElement('div');
+                akteElement.innerHTML = `
+                    <h3>${akte.name}</h3>
+                    <p><strong>Typ:</strong> ${akte.typ}</p>
+                    <p><strong>Officer:</strong> ${akte.officer}</p>
+                    <p><strong>Geburtsdatum:</strong> ${akte.geburtsdatum}</p>
+                    <p><strong>Verbrechen:</strong> ${akte.verbrechen}</p>
+                    <p><strong>Beschreibung:</strong> ${akte.beschreibung}</p>
+                    <p><strong>Datum der Aufnahme:</strong> ${akte.datum}</p>
+                    <button onclick="deleteAkte(${index})">Löschen</button>
+                    <hr>
+                `;
+                aktenListe.appendChild(akteElement);
+            });
+        }
+
+        function updateUserListe() {
+            userListe.innerHTML = '<h3>Benutzerliste</h3>';
+            users.forEach((user, index) => {
+                if (user.username !== 'admin') {
+                    const userElement = document.createElement('div');
+                    userElement.innerHTML = `
+                        <p>${user.username} <button onclick="deleteUser(${index})">Löschen</button></p>
+                    `;
+                    userListe.appendChild(userElement);
+                }
+            });
+        }
+
+        function deleteAkte(index) {
+            akten.splice(index, 1);
+            localStorage.setItem('akten', JSON.stringify(akten));
+            updateAktenListe();
+            syncData(); // Sofortige Synchronisation nach Löschung
+        }
+
+        function deleteUser(index) {
+            users.splice(index, 1);
+            localStorage.setItem('users', JSON.stringify(users));
+            updateUserListe();
+            syncData(); // Sofortige Synchronisation nach Löschung
+        }
+
+        function sucheAkten() {
+            const suchbegriff = document.getElementById('suchfeld').value.toLowerCase();
+            const gefiltereAkten = akten.filter(akte => akte.name.toLowerCase().includes(suchbegriff));
+            
+            aktenListe.innerHTML = '<h2>Suchergebnisse</h2>';
+            gefiltereAkten.forEach((akte, index) => {
+                const akteElement = document.createElement('div');
+                akteElement.innerHTML = `
+                    <h3>${akte.name}</h3>
+                    <p><strong>Typ:</strong> ${akte.typ}</p>
+                    <p><strong>Officer:</strong> ${akte.officer}</p>
+                    <p><strong>Geburtsdatum:</strong> ${akte.geburtsdatum}</p>
+                    <p><strong>Verbrechen:</strong> ${akte.verbrechen}</p>
+                    <p><strong>Beschreibung:</strong> ${akte.beschreibung}</p>
+                    <p><strong>Datum der Aufnahme:</strong> ${akte.datum}</p>
+                    <button onclick="deleteAkte(${akten.indexOf(akte)})">Löschen</button>
+                    <hr>
+                `;
+                aktenListe.appendChild(akteElement);
+            });
+        }
+
+        loginForm.addEventListener('submit', function(e) {
+            e.preventDefault();
+            const username = document.getElementById('username').value;
+            const password = document.getElementById('password').value;
+            const user = users.find(u => u.username === username && u.password === password);
+            
+            if (user) {
+                currentUser = user;
+                loginSection.classList.add('hidden');
+                mainSection.classList.remove('hidden');
+                if (username === 'admin') {
+                    adminSection.classList.remove('hidden');
+                    updateUserListe();
+                }
+                updateAktenListe();
+            } else {
+                alert('Ungültige Anmeldedaten');
+            }
+        });
+
+        aktenForm.addEventListener('submit', function(e) {
+            e.preventDefault();
+            
+            const akte = {
+                typ: document.getElementById('aktenTyp').value,
+                officer: document.getElementById('officerName').value,
+                name: document.getElementById('name').value,
+                geburtsdatum: document.getElementById('geburtsdatum').value,
+                verbrechen: document.getElementById('verbrechen').value,
+                beschreibung: document.getElementById('beschreibung').value,
+                datum: new Date().toLocaleString()
+            };
+
+            akten.push(akte);
+            localStorage.setItem('akten', JSON.stringify(akten));
+            
+            aktenForm.reset();
+            updateAktenListe();
+            syncData(); // Sofortige Synchronisation nach Hinzufügen
+        });
+
+        userForm.addEventListener('submit', function(e) {
+            e.preventDefault();
+            
+            const newUser = {
+                username: document.getElementById('newUsername').value,
+                password: document.getElementById('newPassword').value
+            };
+
+            users.push(newUser);
+            localStorage.setItem('users', JSON.stringify(users));
+            
+            userForm.reset();
+            updateUserListe();
+            syncData(); // Sofortige Synchronisation nach Hinzufügen
+        });
+
+        // Initial sync
+        syncData();
+    </script>
+</body>
+</html>
